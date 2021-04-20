@@ -9,7 +9,7 @@
 ### 如何构建
 
   正如代码中的注释提到的，这份程序在Windows 10 x64下使用gcc 9.2.0编译通过。编译时使用 `-lws2_32` 选项指定链接到Winsock2静态库，整个的编译指令如下：  
-  `g++ smping.cpp --std=c++11 =lws2_32 -o smping.exe`  
+  `g++ smping.cpp --std=c++11 -lws2_32 -o smping.exe`  
   事就这么成了（
 
 ### 使用说明
