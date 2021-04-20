@@ -186,7 +186,7 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
         ip = inet_ntoa(*iddr);
 
         if (debug)
-            errOut << "IP resolved: " << ip << endl;
+            errOut << "IP resolved: " << ip << endl << endl;
     }
     catch (exception& e){
     }
