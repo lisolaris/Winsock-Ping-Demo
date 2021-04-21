@@ -15,22 +15,22 @@
  * 2021/03/31 新建文件 smping.cpp
  * 2021/04/** 摸鱼 摸鱼 摸鱼
  * 2021/04/18 完成基本的ping功能，但不能解析参数
- * 2021/04/19 仔细研究了checkSum()，现在总算算出来是对的了
- * 2021/04/20 重写了checkArgs()，现在可以解析 -t -l -n 参数了；另外还加上了很多（我不喜欢的）大括号，提高可读性
- *            实现了nslookup()，本来想自己发送DNS包查询的，但是卡在第一步 获取DNS服务器上 
+ * 2021/04/19 仔细研究了checkSum() 现在总算算出来是对的了
+ * 2021/04/20 重写了checkArgs() 现在可以解析 -t -l -n 参数了；另外还加上了很多（我不喜欢的）大括号，提高可读性
+ *            实现了nslookup() 本来想自己发送DNS包查询的，但是卡在第一步 获取DNS服务器上 
  *            大概是我用的gcc链接Windows自带库有问题 又不想把DNS服务器写死在代码里，遂用Winsock提供的api偷懒了
- * 2021/04/21 重写了nslookup() 自己发送UDP包查询DNS
+ * 2021/04/21 增加了nslookupFull() 如果nslookup()失败（确实会失败，在解析校内域名时）就自己发送DNS请求查询
  */
 
 //代码中的注释都是英文的 单纯是我懒不想切换输入法
 
 #include "smping.h"
 
-#include <windows.h>
 #include <winsock.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
+#include <windows.h>    // Complier recommand to put windows.h after winsock2.h
 
 // #pragma comment (lib, "iphlpapi.lib")
 // #pragma comment (lib, "ws2_32.lib")    // useless with gcc on windows
@@ -65,6 +65,9 @@ int main(int argc, char* argv[]){
             cerr << "argc: " << argc << endl;
             for(int i=0; i<argc; i++)
                 cerr << "argv[" << i << "] " << argv[i] << endl;
+        
+        if (parseRes->loop)
+            parseRes->count = numeric_limits<int>::max();
 
             cerr << endl;
             cerr << "Parameters resolve result:" << endl
@@ -87,9 +90,6 @@ int main(int argc, char* argv[]){
              << parseRes->size << '(' << (parseRes->size)+28 << ')'
              << " bytes of data:"
              << endl;
-        
-        if (parseRes->loop)
-            parseRes->count = numeric_limits<int>::max();
 
         for (int i=0; i<parseRes->count; i++){
             pingRes = ping(parseRes->ip, parseRes->loop, parseRes->size, i+1, parseRes->debug, cerr);
@@ -248,7 +248,7 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
                             errOut << "No data record found." << endl;
                             break;
                         default:
-                            errOut << "Function failed with error:" << dwError << endl;
+                            errOut << "Error code:" << dwError << endl;
                             break;
                     }
                 }
@@ -263,7 +263,7 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
         }
 
         if (debug)
-            errOut << "IP resolved: " << ip << endl << endl;
+            errOut << endl << "IP resolved: " << ip << endl << endl;
     }
     catch (exception& e){
     }
@@ -282,6 +282,7 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
 
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
+    
 }
 
 // Ping destnation IP, default to 32 Byte data pack and repeat for 4 times
@@ -320,12 +321,13 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         sockaddr_in recv;
         int recvLen = sizeof(recv);
         char recvBuff[RECV_BUFFER_SIZE];
-        int sendStatus, recvStatus;
+        int sendStatus, recvStatus, sendErrorCode;
         bool isTimeOut = false;
 
         clock_t startClock, endClock;
         startClock = clock();
         sendStatus = sendto(sock, sendBuff, sizeof(sendBuff), 0, (SOCKADDR*)&dest, sizeof(sendBuff));
+        sendErrorCode = WSAGetLastError();
 
         int resps = 0;    // Number of response
 
@@ -350,9 +352,11 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         // !!! Set log here to avoid extend delay
         if (debug)
             errOut << '\t' << "Send info: " << "status: " << sendStatus 
-                   << " Error code: " << WSAGetLastError() << endl
+                   << " Error code: " << sendErrorCode
+                   << endl
                    << '\t' << "Receive info: " << "status: " << recvStatus 
-                   << " Error code: " << WSAGetLastError() << endl;
+                   << " Error code: " << WSAGetLastError()
+                   << endl;
 
         if(isTimeOut){
             throw WinsockRecvTimeOutException();
