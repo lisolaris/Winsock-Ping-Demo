@@ -229,33 +229,25 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         sockaddr_in recv;
         int recvLen = sizeof(recv);
         char recvBuff[RECV_BUFFER_SIZE];
-        int status;
+        int sendStatus, recvStatus;
         bool isTimeOut = false;
 
         clock_t startClock, endClock;
         startClock = clock();
-        status = sendto(sock, sendBuff, sizeof(sendBuff), 0, (SOCKADDR*)&dest, sizeof(sendBuff));
-
-        if (debug)
-
-            errOut << '\t' << "Send info: " << "status: " << status 
-                 << " Error code: " << WSAGetLastError() << endl;
+        sendStatus = sendto(sock, sendBuff, sizeof(sendBuff), 0, (SOCKADDR*)&dest, sizeof(sendBuff));
 
         int resps = 0;    // Number of response
 
         int i = 0;
         while(true){
             if(i++ > 5){    // Try 5 times to receive reply message but timeout
+                isTimeOut = true;
                 break;
             }
 
             memset(recvBuff, 0, RECV_BUFFER_SIZE);    // Set the receive buffer to full zero
 
-            int status = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recv, &recvLen);
-
-            if (debug)
-                errOut << '\t' << "Receive info: " << "status: " << status 
-                     << " Error code: " << WSAGetLastError() << endl;
+            int recvStatus = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recv, &recvLen);
 
             if(strcmp(inet_ntoa(recv.sin_addr), destIP.c_str()) == 0){
                 resps++;
@@ -263,6 +255,13 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
             }
         }
         endClock = clock();
+
+        // !!! Set log here to avoid extend delay
+        if (debug)
+            errOut << '\t' << "Send info: " << "status: " << sendStatus 
+                   << " Error code: " << WSAGetLastError() << endl
+                   << '\t' << "Receive info: " << "status: " << recvStatus 
+                   << " Error code: " << WSAGetLastError() << endl;
 
         if(isTimeOut){
             throw WinsockRecvTimeOutException();
