@@ -26,9 +26,28 @@ struct WinsockSendException : public exception{
     }
 };
 
-struct icmpRecvFailedException : public exception{
+struct IcmpRecvFailedException : public exception{
     const char * what () const throw (){
         return "IP version check failed.";
+    }
+};
+
+struct GetNetworkParamsFailedException : public exception{
+    int errCode;
+    string result = string("Get network parameters failed.");
+    GetNetworkParamsFailedException();
+    GetNetworkParamsFailedException(int errCode, int retVal = -1){
+        switch (errCode){
+            case 1:
+                result.append("Allocating memory failed.");
+                break;
+            case 2:
+                result.append("GetNetworkParams() returned a error.Error code:");
+                result.append(1, char(retVal - 48));
+        }
+    }
+    const char * what () const throw (){
+        return result.c_str();
     }
 };
 
@@ -60,9 +79,15 @@ struct pingInfo{
     unsigned short checksum;
 };
 
+struct DNSList{
+    char* ip;
+    DNSList* next = NULL;
+};
+
 parseResult* checkArgs(int argc, char* argv[]);
 inline const char* bool2Char(bool input);
 char* nslookup(string& hostname, bool debug, ostream& errOut);
+DNSList* getDNSList(string& hostname, bool debug, ostream& errOut);
 unsigned short checkSum(icmpHeader* head, int len);
 // unsigned short chsum(icmpHeader *picmp, int len);
 pingInfo* ping(string& destIP, bool loop, int size, int seq, bool debug, ostream& errOut);

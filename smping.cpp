@@ -42,6 +42,9 @@
 #include <iomanip>
 #include <string>
 
+// Customed malloc() and free(); See https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getnetworkparams
+#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
+#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 // #define RAND_MAX 126-32    // Number of displayable characters in ASCII
 
 const int ICMP_HEADER_SIZE = sizeof(icmpHeader);    // !!! Must put after #include "smping.h"
@@ -114,6 +117,7 @@ inline const char* bool2Char(bool input){
     return input ? "true" : "false" ;
 }
 
+// Check the args attached to smping.exe
 parseResult* checkArgs(int argc, char* argv[]){
     parseResult* res = new parseResult;
 
@@ -167,6 +171,57 @@ parseResult* checkArgs(int argc, char* argv[]){
     return res;
 }
 
+// Get current DNS configurations, using GetNetworkParams()
+DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
+    try{
+        FIXED_INFO *pFixedInfo;
+        ULONG ulOutBufLen;
+        DWORD dwRetVal;
+        IP_ADDR_STRING *pIPAddr;
+
+        pFixedInfo = (FIXED_INFO *)MALLOC(sizeof(FIXED_INFO));
+        ulOutBufLen = sizeof(FIXED_INFO);
+
+        // Call GetAdaptersInfo() once to get the correct value of ulOutBufLen
+        if (GetNetworkParams(pFixedInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
+            FREE(pFixedInfo);
+            pFixedInfo = (FIXED_INFO *) MALLOC(ulOutBufLen);
+            if (pFixedInfo == NULL) 
+                // The meaning of errcode can see in smping.h
+                throw GetNetworkParamsFailedException(1);
+        }
+
+        dwRetVal = GetNetworkParams(pFixedInfo, &ulOutBufLen);
+        if (dwRetVal == NO_ERROR){
+            pIPAddr = &(pFixedInfo->DnsServerList);
+
+            DNSList* head = new DNSList;
+            head->ip = pIPAddr->IpAddress.String;
+
+            if (debug)
+                errOut << "GetNetworkParams() successed." << endl
+                       << "DNS Server obtained:" << endl;
+
+            DNSList* temp = head;
+            while(pIPAddr != NULL){
+                if (debug)
+                    errOut << '\t' << pIPAddr->IpAddress.String << endl;
+                temp->next = new DNSList;
+                temp = temp->next;
+                // Allocate a piece of memory for DNSList to avoid bug when return it
+                temp->ip = (char*)malloc(sizeof(pIPAddr->IpAddress.String));
+                memcpy(temp->ip, pIPAddr->IpAddress.String, sizeof(pIPAddr->IpAddress.String));
+                pIPAddr = pIPAddr->Next;
+            }
+
+            return head;
+        }else
+            throw GetNetworkParamsFailedException(2, dwRetVal);
+    }
+    catch (exception& e){}
+    return NULL;
+}
+
 // resolve the input hostname to IP address
 char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
     if (debug)
@@ -175,7 +230,7 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
     // If use string to declare ip then return it's reference, the Program will exit unexpectly
     char* ip;
     try{
-        WSADATA wsaData;
+        WSADATA wsaData;                          
         WSAStartup(MAKEWORD(2, 2), &wsaData);
 
         SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -213,17 +268,17 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         dest.sin_addr.S_un.S_addr = inet_addr(destIP.c_str());
         dest.sin_port = htons(0);
 
-        icmpHeader* icmpHdr = (icmpHeader*)sendBuff;    // set icmp Head
-        icmpHdr->type = 0x08;    // ICMP Type: request echo
-        icmpHdr->code = 0;
-        icmpHdr->id = (USHORT)::GetCurrentProcessId();    //ICMP id: usually used to identify which process send icmp request
-        icmpHdr->seq = seq;
-        icmpHdr->checkSum = 0;
+        icmpHeader* pIcmpHdr = (icmpHeader*)sendBuff;    // set icmp Head
+        pIcmpHdr->type = 0x08;    // ICMP Type: request echo
+        pIcmpHdr->code = 0;
+        pIcmpHdr->id = (USHORT)::GetCurrentProcessId();    //ICMP id: usually used to identify which process send icmp request
+        pIcmpHdr->seq = seq;
+        pIcmpHdr->checkSum = 0;
 
         // Fullfill the rest part in icmp package
         memset((char*)(sendBuff+ICMP_HEADER_SIZE), 'a', size);
 
-        icmpHdr->checkSum = checkSum(icmpHdr, sizeof(sendBuff));
+        pIcmpHdr->checkSum = checkSum(pIcmpHdr, sizeof(sendBuff));
 
         #define RECV_BUFFER_SIZE 1024
         sockaddr_in recv;
@@ -286,14 +341,14 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
             result->ttl = recvTTL;
             result->checksum = ntohs(icmpResp->checkSum);
         }else{
-            throw icmpRecvFailedException();
+            throw IcmpRecvFailedException();
         }
 
         return result;
 
     }catch(WinsockRecvTimeOutException& e){
         errOut << e.what();
-    }catch(icmpRecvFailedException& e){
+    }catch(IcmpRecvFailedException& e){
         errOut << e.what();
     }
     return NULL;
