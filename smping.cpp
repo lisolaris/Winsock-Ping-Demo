@@ -19,6 +19,7 @@
  * 2021/04/20 重写了checkArgs()，现在可以解析 -t -l -n 参数了；另外还加上了很多（我不喜欢的）大括号，提高可读性
  *            实现了nslookup()，本来想自己发送DNS包查询的，但是卡在第一步 获取DNS服务器上 
  *            大概是我用的gcc链接Windows自带库有问题 又不想把DNS服务器写死在代码里，遂用Winsock提供的api偷懒了
+ * 2021/04/21 重写了nslookup() 自己发送UDP包查询DNS
  */
 
 //代码中的注释都是英文的 单纯是我懒不想切换输入法
@@ -173,6 +174,8 @@ parseResult* checkArgs(int argc, char* argv[]){
 
 // Get current DNS configurations, using GetNetworkParams()
 DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
+    if (debug)
+        errOut << endl << "getDNSList() called" << endl;
     try{
         FIXED_INFO *pFixedInfo;
         ULONG ulOutBufLen;
@@ -199,7 +202,7 @@ DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
             head->ip = pIPAddr->IpAddress.String;
 
             if (debug)
-                errOut << "GetNetworkParams() successed." << endl
+                errOut << endl << "GetNetworkParams() successed." << endl
                        << "DNS Server obtained:" << endl;
 
             DNSList* temp = head;
@@ -222,23 +225,42 @@ DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
     return NULL;
 }
 
-// resolve the input hostname to IP address
+// resolve the input hostname to IP address, use gethostbyname() in Winsock library
 char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
     if (debug)
-        errOut << "nslookup() called" << endl;
+        errOut << endl << "nslookup() called" << endl;
 
     // If use string to declare ip then return it's reference, the Program will exit unexpectly
     char* ip;
     try{
-        WSADATA wsaData;                          
-        WSAStartup(MAKEWORD(2, 2), &wsaData);
-
-        SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
         hostent* host = gethostbyname(hostname.c_str());
-        in_addr * iddr=(in_addr*)host->h_addr;
 
+        if (host == NULL){
+            if (debug){
+                errOut << "Winsock gethostbyname() failed.";
+                int dwError = WSAGetLastError();
+                if (dwError != 0) {
+                    switch (dwError){
+                        case WSAHOST_NOT_FOUND:
+                            errOut << "Host not found." << endl;
+                            break;
+                        case WSANO_DATA:
+                            errOut << "No data record found." << endl;
+                            break;
+                        default:
+                            errOut << "Function failed with error:" << dwError << endl;
+                            break;
+                    }
+                }
+                errOut << "Try nslookupFull() to get target IP." << endl;
+            }
+            ip = nslookupFull(hostname, debug, errOut);
+        }
+
+        else{
+        in_addr * iddr=(in_addr*)host->h_addr;
         ip = inet_ntoa(*iddr);
+        }
 
         if (debug)
             errOut << "IP resolved: " << ip << endl << endl;
@@ -248,10 +270,24 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
     return ip;
 }
 
+// Send DNS query message to get target IP, will be called if nslookup() failed
+char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
+    if (debug)
+        errOut << endl << "nslookupFull() called" << endl;
+
+    DNSList* head = getDNSList(debug, errOut);
+
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+    SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+}
+
 // Ping destnation IP, default to 32 Byte data pack and repeat for 4 times
 pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bool debug = false, ostream& errOut = cerr){
     if (debug)
-        errOut << "ping() called" << endl;
+        errOut << endl << "ping() called" << endl;
 
     try{
         int msTimeOut = 1000;    // Max timeout: 1s
