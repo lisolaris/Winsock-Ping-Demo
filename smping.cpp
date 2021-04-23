@@ -49,9 +49,15 @@
 // #define RAND_MAX 126-32    // Number of displayable characters in ASCII
 
 // !!! Must put after #include "smping.h"
-#define ICMP_HEADER_SIZE sizeof(icmpHeader)
-#define DNS_MESSAGE_SIZE sizeof(dnsMessage)
-#define DNS_QUERY_INFO_SIZE sizeof(dnsQueryInfo)
+// May speed up in a certain degree, I guess :(
+const int DnsMsgSize = sizeof(dnsMessage);
+const int DnsQueryInfoSize = sizeof(dnsQueryInfo);
+const int IcmpHeaderSize = sizeof(icmpHeader);
+
+#define DNS_MESSAGE_SIZE DnsMsgSize
+#define DNS_QUERY_INFO_SIZE DnsQueryInfoSize
+#define ICMP_HEADER_SIZE IcmpHeaderSize
+#define RECV_BUFFER_SIZE 1024
 
 using namespace std;
 
@@ -94,7 +100,8 @@ int main(int argc, char* argv[]){
              << " bytes of data:"
              << endl;
 
-        for (int i=0; i<parseRes->count; i++){
+        ping(parseRes->ip, parseRes->loop, parseRes->count, parseRes->size, 1, parseRes->debug, cout, cerr);
+/*         for (int i=0; i<parseRes->count; i++){
             pingRes = ping(parseRes->ip, parseRes->loop, parseRes->size, i+1, parseRes->debug, cerr);
             cout << pingRes->len << " bytes from " << parseRes->ip << ':'
                  << " ICMP_sequence=" << pingRes->seq
@@ -106,7 +113,7 @@ int main(int argc, char* argv[]){
                 cout << endl;
 
             Sleep(500);
-        }
+        } */
 
     }
     catch(ParaResolveFailedException& e){
@@ -279,7 +286,7 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
     if (debug)
         errOut << endl << "nslookupFull() called" << endl;
 
-    DNSList* head = getDNSList(debug, errOut);
+    DNSList* pDnsList = getDNSList(debug, errOut);
 
     const char* hostName = hostname.c_str();
     int targetLen = sizeof(hostName) + 1;
@@ -288,9 +295,10 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
 
     // Organize domin name in DNS message format
     for(int i=targetLen-1; i>=0; i--){
-        int len;
+        int len = 0;
         targetName[targetLen] = 0;
-        if(targetName[i] != '.')
+
+        if (targetName[i] != '.')
             len++;
         else{
             targetName[i] = len;
@@ -308,13 +316,11 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
     for(int i=1; flag; i++){
         sockaddr_in dest;
         dest.sin_family = AF_INET;
-        dest.sin_addr.S_un.S_addr = inet_addr(head->ip);
+        dest.sin_addr.S_un.S_addr = inet_addr(pDnsList->ip);
         dest.sin_port = htons(53);
 
-        // dnsMessage* pDnsQueryMsg = (dnsMessage*)malloc(sizeof(dnsMessage));
-
-
-        char sendBuff[DNS_MESSAGE_SIZE + targetLen + DNS_QUERY_INFO_SIZE];
+        int sizeOfSendBuffer = DNS_MESSAGE_SIZE + targetLen + DNS_QUERY_INFO_SIZE;
+        char sendBuff[sizeOfSendBuffer];
 
         dnsMessage* pDnsQueryMsg = (dnsMessage*)sendBuff;
         pDnsQueryMsg->id = i;
@@ -331,13 +337,21 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
         pDnsQueryInfo->type = 0x0001;    //Type: A(Host Address)
         pDnsQueryInfo->dnsClass = 0x0001;    //Class: IN
 
-        
+        sockaddr_in recv;
+        int sizeOfRecvSock = sizeof(recv);
+        char recvBuff[RECV_BUFFER_SIZE];
+        int sendStatus, recvStatus, sendErrorCode;
+
+        sendStatus = sendto(sock, sendBuff, sizeOfSendBuffer, 0, (SOCKADDR*)pDnsList->ip, sizeOfSendBuffer);
+        sendErrorCode = WSAGetLastError();
+
+
     }
 
 }
 
 // Ping destnation IP, default to 32 Byte data pack and repeat for 4 times
-pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bool debug = false, ostream& errOut = cerr){
+pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, int seqStart = 1, bool debug = false, ostream& stdOut = cout, ostream& errOut = cerr){
     if (debug)
         errOut << endl << "ping() called" << endl;
 
@@ -360,83 +374,100 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         pIcmpReqHdr->type = 0x08;    // ICMP Type: request echo
         pIcmpReqHdr->code = 0;
         pIcmpReqHdr->id = (USHORT)::GetCurrentProcessId();    //ICMP id: usually used to identify which process send icmp request
-        pIcmpReqHdr->seq = seq;
+        // pIcmpReqHdr->seq = seqStart;
         pIcmpReqHdr->checkSum = 0;
 
         // Fullfill the rest part in icmp package
         memset((char*)(sendBuff+ICMP_HEADER_SIZE), 'a', size);
 
-        pIcmpReqHdr->checkSum = checkSum(pIcmpReqHdr, sizeof(sendBuff));
-
-        #define RECV_BUFFER_SIZE 1024
         sockaddr_in recv;
         int recvLen = sizeof(recv);
         char recvBuff[RECV_BUFFER_SIZE];
         int sendStatus, recvStatus, sendErrorCode;
         bool isTimeOut = false;
 
-        clock_t startClock, endClock;
-        startClock = clock();
-        sendStatus = sendto(sock, sendBuff, sizeof(sendBuff), 0, (SOCKADDR*)&dest, sizeof(sendBuff));
-        sendErrorCode = WSAGetLastError();
+        long startClock, endClock;
 
-        int resps = 0;    // Number of response
+        // Cycled pinging target
+        for(int times=0; times<count; times++){
+            pIcmpReqHdr->seq = seqStart + times;
+            pIcmpReqHdr->checkSum = checkSum(pIcmpReqHdr, sizeof(sendBuff));
 
-        int i = 0;
-        while(true){
-            if(i++ > 5){    // Try 5 times to receive reply message but timeout
-                isTimeOut = true;
-                break;
+            startClock = clock();
+
+            sendStatus = sendto(sock, sendBuff, sizeof(sendBuff), 0, (SOCKADDR*)&dest, sizeof(sendBuff));
+            sendErrorCode = WSAGetLastError();
+
+            int resps = 0;    // Number of response
+
+            int i = 0;
+            while(true){
+                if(i++ > 5){    // Try 5 times to receive reply message but timeout
+                    isTimeOut = true;
+                    break;
+                }
+
+                memset(recvBuff, 0, RECV_BUFFER_SIZE);    // Set the receive buffer to full zero
+
+                int recvStatus = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recv, &recvLen);
+
+                if(strcmp(inet_ntoa(recv.sin_addr), destIP.c_str()) == 0){
+                    resps++;
+                    break;
+                }
+            }
+            endClock = clock();
+
+            // Set debug log after timer to avoid extra delay
+            if (debug)
+                errOut << '\t' << "Send info: " << "status: " << sendStatus 
+                       << " Error code: " << sendErrorCode
+                       << endl
+                       << '\t' << "Receive info: " << "status: " << recvStatus 
+                       << " Error code: " << WSAGetLastError()
+                       << endl;
+
+            if(isTimeOut){
+                throw WinsockRecvTimeOutException();
             }
 
-            memset(recvBuff, 0, RECV_BUFFER_SIZE);    // Set the receive buffer to full zero
+            char ipInfo = recvBuff[0];    // First 8 bits for IP version and head length
+            short* ipMsgLen = (short*)&(recvBuff[2]);    // 3~4 bytes for total length of IP message
+            char recvTTL = recvBuff[8];    // 9th byte for ttl
 
-            int recvStatus = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recv, &recvLen);
+            int ipVer = ipInfo >> 4;
+            int ipHeadLen = ((ipInfo << 4) >> 4) * 4;
 
-            if(strcmp(inet_ntoa(recv.sin_addr), destIP.c_str()) == 0){
-                resps++;
-                break;
+            // The ICMP Message just after IP head Message, use ipHeadLen to locate it
+            icmpHeader* icmpResp = (icmpHeader*)(recvBuff + ipHeadLen);
+
+            // pingInfo* result = new pingInfo;
+
+            if(icmpResp->type == 0){    // ICMP echo reply message
+                double durTime = 1000*(double)((endClock-startClock)/double(CLOCKS_PER_SEC));
+                // result->seq = seqStart;
+                // result->len = ntohs(*ipMsgLen);
+                // result->ttl = recvTTL;
+                int checksum = ntohs(icmpResp->checkSum);
+
+                stdOut << ntohs(*ipMsgLen) << " bytes from " << destIP << ':'
+                    << " ICMP_sequence=" << pIcmpReqHdr->seq
+                    << " TTL=" << int(recvTTL)
+                    << " Time=" <<fixed << setprecision(3) << durTime << " ms";
+
+                if (debug)
+                    errOut << " CheckSum=" << checksum << endl;
+                else
+                    stdOut << endl;
+            }else{
+                throw IcmpRecvFailedException();
             }
-        }
-        endClock = clock();
 
-        // Set debug log after timer to avoid extra delay
-        if (debug)
-            errOut << '\t' << "Send info: " << "status: " << sendStatus 
-                   << " Error code: " << sendErrorCode
-                   << endl
-                   << '\t' << "Receive info: " << "status: " << recvStatus 
-                   << " Error code: " << WSAGetLastError()
-                   << endl;
-
-        if(isTimeOut){
-            throw WinsockRecvTimeOutException();
-        }
-
-        char ipInfo = recvBuff[0];    // First 8 bits for IP version and head length
-        short* ipMsgLen = (short*)&(recvBuff[2]);    // 3~4 bytes for total length of IP message
-        char recvTTL = recvBuff[8];    // 9th byte for ttl
-
-        int ipVer = ipInfo >> 4;
-        int ipHeadLen = ((ipInfo << 4) >> 4) * 4;
-
-        // The ICMP Message just after IP head Message, use ipHeadLen to locate it
-        icmpHeader* icmpResp = (icmpHeader*)(recvBuff + ipHeadLen);
-
-        pingInfo* result = new pingInfo;
-
-        if(icmpResp->type == 0){    // ICMP echo reply message
-            result->durTime = 1000*(double)((endClock-startClock)/double(CLOCKS_PER_SEC));
-            result->seq = seq;
-            result->len = ntohs(*ipMsgLen);
-            result->ttl = recvTTL;
-            result->checksum = ntohs(icmpResp->checkSum);
-        }else{
-            throw IcmpRecvFailedException();
+        Sleep(500);
         }
 
         closesocket(sock);
-        return result;
+        // return result;
 
     }catch(WinsockRecvTimeOutException& e){
         errOut << e.what();

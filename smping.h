@@ -105,4 +105,4 @@ char* nslookup(string& hostname, bool debug, ostream& errOut);
 char* nslookupFull(string& hostname, bool debug, ostream& errOut);
 unsigned short checkSum(icmpHeader* head, int len);
 // unsigned short chsum(icmpHeader *picmp, int len);
-pingInfo* ping(string& destIP, bool loop, int size, int seq, bool debug, ostream& errOut);
+pingInfo* ping(string& destIP, bool loop, int count, int size, int seqStart, bool debug, ostream& stdOut, ostream& errOut);
