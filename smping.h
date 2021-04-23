@@ -62,6 +62,20 @@ struct parseResult{
     int size = 32;
 };
 
+struct dnsQueryInfo{
+    unsigned short type;
+    unsigned short dnsClass;
+};
+
+struct dnsMessage{
+    unsigned short id;
+    unsigned short flag;
+    unsigned short questions;
+    unsigned short ansRR;
+    unsigned short authRR;
+    unsigned short adlRR;    // Additional RR
+};
+
 struct icmpHeader{
     unsigned char type; 
     unsigned char code;

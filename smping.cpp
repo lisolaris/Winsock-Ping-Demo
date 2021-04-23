@@ -48,7 +48,10 @@
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 // #define RAND_MAX 126-32    // Number of displayable characters in ASCII
 
-const int ICMP_HEADER_SIZE = sizeof(icmpHeader);    // !!! Must put after #include "smping.h"
+// !!! Must put after #include "smping.h"
+#define ICMP_HEADER_SIZE sizeof(icmpHeader)
+#define DNS_MESSAGE_SIZE sizeof(dnsMessage)
+#define DNS_QUERY_INFO_SIZE sizeof(dnsQueryInfo)
 
 using namespace std;
 
@@ -272,17 +275,65 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
 
 // Send DNS query message to get target IP, will be called if nslookup() failed
 char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
+
     if (debug)
         errOut << endl << "nslookupFull() called" << endl;
 
     DNSList* head = getDNSList(debug, errOut);
 
+    const char* hostName = hostname.c_str();
+    int targetLen = sizeof(hostName) + 1;
+    char* targetName = (char*)malloc(targetLen);
+    memcpy(targetName+sizeof(char), hostName, targetLen-1);
+
+    // Organize domin name in DNS message format
+    for(int i=targetLen-1; i>=0; i--){
+        int len;
+        targetName[targetLen] = 0;
+        if(targetName[i] != '.')
+            len++;
+        else{
+            targetName[i] = len;
+            len = 0;
+        }
+    }
+
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    // setsockopt(sock, )
+    bool flag = false;
 
-    
+    for(int i=1; flag; i++){
+        sockaddr_in dest;
+        dest.sin_family = AF_INET;
+        dest.sin_addr.S_un.S_addr = inet_addr(head->ip);
+        dest.sin_port = htons(53);
+
+        // dnsMessage* pDnsQueryMsg = (dnsMessage*)malloc(sizeof(dnsMessage));
+
+
+        char sendBuff[DNS_MESSAGE_SIZE + targetLen + DNS_QUERY_INFO_SIZE];
+
+        dnsMessage* pDnsQueryMsg = (dnsMessage*)sendBuff;
+        pDnsQueryMsg->id = i;
+        pDnsQueryMsg->flag = 0x0100;    //Standard query
+        pDnsQueryMsg->questions = 1;
+        pDnsQueryMsg->ansRR = 0;
+        pDnsQueryMsg->authRR = 0;
+        pDnsQueryMsg->adlRR = 0;
+
+        // Target name in DNS message format, after basic sturct part
+        memcpy(sendBuff+DNS_MESSAGE_SIZE, targetName, targetLen);
+
+        dnsQueryInfo* pDnsQueryInfo = (dnsQueryInfo*)(sendBuff + DNS_MESSAGE_SIZE + targetLen);
+        pDnsQueryInfo->type = 0x0001;    //Type: A(Host Address)
+        pDnsQueryInfo->dnsClass = 0x0001;    //Class: IN
+
+        
+    }
+
 }
 
 // Ping destnation IP, default to 32 Byte data pack and repeat for 4 times
@@ -305,17 +356,17 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         dest.sin_addr.S_un.S_addr = inet_addr(destIP.c_str());
         dest.sin_port = htons(0);
 
-        icmpHeader* pIcmpHdr = (icmpHeader*)sendBuff;    // set icmp Head
-        pIcmpHdr->type = 0x08;    // ICMP Type: request echo
-        pIcmpHdr->code = 0;
-        pIcmpHdr->id = (USHORT)::GetCurrentProcessId();    //ICMP id: usually used to identify which process send icmp request
-        pIcmpHdr->seq = seq;
-        pIcmpHdr->checkSum = 0;
+        icmpHeader* pIcmpReqHdr = (icmpHeader*)sendBuff;    // set icmp Head
+        pIcmpReqHdr->type = 0x08;    // ICMP Type: request echo
+        pIcmpReqHdr->code = 0;
+        pIcmpReqHdr->id = (USHORT)::GetCurrentProcessId();    //ICMP id: usually used to identify which process send icmp request
+        pIcmpReqHdr->seq = seq;
+        pIcmpReqHdr->checkSum = 0;
 
         // Fullfill the rest part in icmp package
         memset((char*)(sendBuff+ICMP_HEADER_SIZE), 'a', size);
 
-        pIcmpHdr->checkSum = checkSum(pIcmpHdr, sizeof(sendBuff));
+        pIcmpReqHdr->checkSum = checkSum(pIcmpReqHdr, sizeof(sendBuff));
 
         #define RECV_BUFFER_SIZE 1024
         sockaddr_in recv;
@@ -384,6 +435,7 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
             throw IcmpRecvFailedException();
         }
 
+        closesocket(sock);
         return result;
 
     }catch(WinsockRecvTimeOutException& e){
