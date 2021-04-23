@@ -26,8 +26,8 @@
 
 #include "smping.h"
 
+#include <winsock2.h>    //  Complier force winsock2.h set before winsock.h
 #include <winsock.h>
-#include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <windows.h>    // Complier recommand to put windows.h after winsock2.h
@@ -233,6 +233,9 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
     // If use string to declare ip then return it's reference, the Program will exit unexpectly
     char* ip;
     try{
+        WSADATA wsaData;
+        WSAStartup(MAKEWORD(2, 2), &wsaData);
+
         hostent* host = gethostbyname(hostname.c_str());
 
         if (host == NULL){
@@ -256,11 +259,8 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
             }
             ip = nslookupFull(hostname, debug, errOut);
         }
-
-        else{
-        in_addr * iddr=(in_addr*)host->h_addr;
-        ip = inet_ntoa(*iddr);
-        }
+        else
+            ip = inet_ntoa(*(in_addr*)host->h_addr);
 
         if (debug)
             errOut << endl << "IP resolved: " << ip << endl << endl;
@@ -349,7 +349,7 @@ pingInfo* ping(string& destIP, bool loop = false, int size = 32, int seq = 1, bo
         }
         endClock = clock();
 
-        // !!! Set log here to avoid extend delay
+        // Set debug log after timer to avoid extra delay
         if (debug)
             errOut << '\t' << "Send info: " << "status: " << sendStatus 
                    << " Error code: " << sendErrorCode
