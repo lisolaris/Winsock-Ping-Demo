@@ -3,7 +3,7 @@
  * 使用了libws2_32.a静态库，感谢gcc
  * 
  * 使用方法：smping [-t] [-l size] [-n count] [-4] [-6] [--debug] target_name
- * -t 一直ping指定的主机 直至用户强制停止（Ctrl + C）
+ * -t 一直Ping指定的主机 直至用户强制停止（Ctrl + C）
  * -l size 指定要发送的ICMP报文大小
  * -n count 指定要发送的次数
  * -4 强制使用IPv4
@@ -14,22 +14,23 @@
 /* 
  * 2021/03/31 新建文件 smping.cpp
  * 2021/04/** 摸鱼 摸鱼 摸鱼
- * 2021/04/18 完成基本的ping功能，但不能解析参数
- * 2021/04/19 仔细研究了checkSum() 现在总算算出来是对的了
+ * 2021/04/18 完成基本的Ping功能，但不能解析参数
+ * 2021/04/19 仔细研究了CheckSum() 现在总算算出来是对的了
  * 2021/04/20 重写了checkArgs() 现在可以解析 -t -l -n 参数了；另外还加上了很多（我不喜欢的）大括号，提高可读性
- *            实现了nslookup() 本来想自己发送DNS包查询的，但是卡在第一步 获取DNS服务器上 
+ *            实现了NsLookup() 本来想自己发送DNS包查询的，但是卡在第一步 获取DNS服务器上 
  *            大概是我用的gcc链接Windows自带库有问题 又不想把DNS服务器写死在代码里，遂用Winsock提供的api偷懒了
- * 2021/04/21 增加了nslookupFull() 如果nslookup()失败（确实会失败，在解析校内域名时）就自己发送DNS请求查询
+ * 2021/04/21 增加了NsLookupFull() 如果NsLookup()失败（确实会失败，在解析校内域名时）就自己发送DNS请求查询
  */
 
 //代码中的注释都是英文的 单纯是我懒不想切换输入法
 
 #include "smping.h"
 
-#include <winsock2.h>    //  Complier force winsock2.h set before winsock.h
-// #include <winsock.h>
+#include <winsock2.h>
+// #include <winsock.h>    //  Complier force winsock2.h set before winsock.h
 #include <ws2tcpip.h>
 #include <windns.h>
+#include <winerror.h>
 #include <iphlpapi.h>
 #include <windows.h>    // Complier recommand to put windows.h after winsock2.h
 
@@ -84,18 +85,17 @@ int main(int argc, char* argv[]){
 
             cerr << endl;
             cerr << "Parameters resolve result:" << endl
-                 << "target.isIPAddr = " << bool2Char(parseRes->isIPAddr) << endl
-                 << "Loop = " << bool2Char(parseRes->loop) << endl
-                 << "Debug enabled = " << bool2Char(parseRes->debug) << endl
-                 << "Target in parameter = " << parseRes->target << endl
-                 << "IP address of target = " << parseRes->ip << endl
-                 << "Test count = " << parseRes->count << endl
-                 << "ICMP message size = " << parseRes->size << endl
-                 << endl;
+                 << "  target.isIPAddr = " << bool2Char(parseRes->isIPAddr) << endl
+                 << "  Loop = " << bool2Char(parseRes->loop) << endl
+                 << "  Debug enabled = " << bool2Char(parseRes->debug) << endl
+                 << "  Target in parameter = " << parseRes->target << endl
+                 << "  IP address of target = " << parseRes->ip << endl
+                 << "  Test count = " << parseRes->count << endl
+                 << "  ICMP message size = " << parseRes->size << endl;
         }
 
         if (!(parseRes->isIPAddr))
-            parseRes->ip = string(nslookup(parseRes->target, parseRes->debug, cerr));
+            parseRes->ip = string(NsLookup(parseRes->target, parseRes->debug, cerr));
         else
             parseRes->ip = parseRes->target;
 
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]){
              << " bytes of data:"
              << endl;
 
-        ping(parseRes->ip, parseRes->loop, parseRes->count, parseRes->size, 1, parseRes->debug, cout, cerr);
+        Ping(parseRes->ip, parseRes->loop, parseRes->count, parseRes->size, 1, parseRes->debug, cout, cerr);
     }
     catch(ParaResolveFailedException& e){
         cerr << e.what() <<endl;
@@ -173,12 +173,12 @@ parseResult* checkArgs(int argc, char* argv[]){
 }
 
 // resolve the input hostname to IP address, use gethostbyname() in Winsock library
-char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
+char* NsLookup(string& hostname, bool debug = false, ostream& errOut = cerr){
     if (debug)
-        errOut << endl << "nslookup() called" << endl;
+        errOut << endl << "NsLookup() called" << endl;
 
     // If use string to declare ip then return it's reference, the Program will exit unexpectly
-    char* ip = NULL;
+    char* ip = new char[24];
     try{
         WSADATA wsaData;
         WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -187,7 +187,7 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
 
         if (host == NULL){
             if (debug){
-                errOut << "Winsock gethostbyname() failed.";
+                errOut << "  Winsock gethostbyname() failed.";
                 int dwError = WSAGetLastError();
                 if (dwError != 0) {
                     switch (dwError){
@@ -202,15 +202,15 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
                             break;
                     }
                 }
-                errOut << "Try nslookupFull() to get target IP." << endl;
+                errOut << "  Try NsLookupFull() to get target IP." << endl;
             }
-            ip = nslookupFull(hostname, debug, errOut);
+            strcpy(ip, NsLookupFull(hostname, debug, errOut));
         }
         else
             ip = inet_ntoa(*(in_addr*)host->h_addr);
 
         if (debug)
-            errOut << endl << "IP resolved: " << ip << endl << endl;
+            errOut << "  Success.IP resolved: " << ip << endl << endl;
     }
     catch (exception& e){
     }
@@ -218,9 +218,9 @@ char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
 }
 
 // Get current DNS configurations, using GetNetworkParams()
-DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
+DNSList* GetDNSList(bool debug = false, ostream& errOut = cerr){
     if (debug)
-        errOut << endl << "getDNSList() called" << endl;
+        errOut << "  GetDNSList() called" << endl;
     try{
         FIXED_INFO *pFixedInfo;
         ULONG ulOutBufLen;
@@ -247,13 +247,13 @@ DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
             head->ip = pIPAddr->IpAddress.String;
 
             if (debug)
-                errOut << endl << "GetNetworkParams() successed." << endl
-                       << "DNS Server obtained:" << endl;
+                errOut << "    GetNetworkParams() successed." << endl
+                       << "    DNS Server obtained:" << endl;
 
             DNSList* temp = head;
             while(pIPAddr != NULL){
                 if (debug)
-                    errOut << '\t' << pIPAddr->IpAddress.String << endl;
+                    errOut << "   " << pIPAddr->IpAddress.String << endl;
                 temp->next = new DNSList;
                 temp = temp->next;
                 // Allocate a piece of memory for DNSList to avoid bug when return it
@@ -274,17 +274,49 @@ DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
 
 // Use DNSAPI by Windows to launch a DNS query
 // See also https://docs.microsoft.com/en-us/troubleshoot/windows/win32/use-dnsquery-resolve-host-names
+const char* NsLookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
+    if (debug)
+        errOut << endl << "NsLookupFull() called" << endl;
+    try{
+        char* pOwnerName = (char*)malloc(hostname.size() * sizeof(char) + 1);
+        strcpy(pOwnerName, hostname.c_str());
+        // WORD wType = DNS_TYPE_A; //Type of the record to be queried.
+        PIP4_ARRAY pSrvList = (PIP4_ARRAY)LocalAlloc(LPTR, sizeof(IP4_ARRAY)); //Pointer to IP4_ARRAY structure.
+        DNS_STATUS status; //Return value of DnsQuery_A() function.
+        WORD wType = DNS_TYPE_A;
+        PDNS_RECORD pDnsRecord; //Pointer to DNS_RECORD structure.
+        DNS_FREE_TYPE freetype;
+        freetype = DnsFreeRecordList;
 
-char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
-    char* ip;
-    DNSList* pDnsList = getDNSList(debug, errOut);
+        DNSList* pDnsList = GetDNSList(debug, errOut);
+        for(int i=1; pDnsList!=NULL; i++){
+            pSrvList->AddrCount = i;
+            pSrvList->AddrArray[0] = inet_addr(pDnsList->ip);
+            pDnsList = pDnsList->next;
+        }
 
+        // Strangely, the VSCode C++ Lint claimed that the first parameter of DnsQuery() is PCWSTR
+        // But gcc think it should be PCSTR and refuse to compile with PCWSTR inputed
+        status = DnsQuery(pOwnerName, wType, DNS_QUERY_BYPASS_CACHE, pSrvList, &pDnsRecord, NULL);
+
+        if (status)
+            throw WinDnsApiQueryFailedException(status);
+        else
+            return (const char*)pDnsRecord->Data.PTR.pNameHost;
+
+        DnsRecordListFree(pDnsRecord, freetype);
+        LocalFree(pSrvList);
+    }
+    catch (exception& e){
+        errOut << e.what();
+    }
+    return NULL;
 }
 
 // Ping destnation IP, default to 32 Byte data pack and repeat for 4 times
-pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, int seqStart = 1, bool debug = false, ostream& stdOut = cout, ostream& errOut = cerr){
+pingInfo* Ping(string& destIP, bool loop = false, int count = 4, int size = 32, int seqStart = 1, bool debug = false, ostream& stdOut = cout, ostream& errOut = cerr){
     if (debug)
-        errOut << endl << "ping() called" << endl;
+        errOut << endl << "Ping() called" << endl;
 
     try{
         int msTimeOut = 1000;    // Max timeout: 1s
@@ -306,13 +338,13 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
         pIcmpReqHdr->code = 0;
         pIcmpReqHdr->id = (USHORT)::GetCurrentProcessId();    //ICMP id: usually used to identify which process send icmp request
         // pIcmpReqHdr->seq = seqStart;
-        pIcmpReqHdr->checkSum = 0;
+        pIcmpReqHdr->CheckSum = 0;
 
         // Fullfill the rest part in icmp package
         memset((char*)(sendBuff+ICMP_HEADER_SIZE), 'a', size);
 
-        sockaddr_in recv;
-        int recvLen = sizeof(recv);
+        sockaddr_in recvAddr;
+        int recvLen = sizeof(recvAddr);
         char recvBuff[RECV_BUFFER_SIZE];
         int sendStatus, recvStatus, sendErrorCode;
         bool isTimeOut = false;
@@ -322,7 +354,7 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
         // Cycled pinging target
         for(int times=0; times<count; times++){
             pIcmpReqHdr->seq = seqStart + times;
-            pIcmpReqHdr->checkSum = checkSum(pIcmpReqHdr, sizeof(sendBuff));
+            pIcmpReqHdr->CheckSum = CheckSum(pIcmpReqHdr, sizeof(sendBuff));
 
             startClock = clock();
 
@@ -340,9 +372,9 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
 
                 memset(recvBuff, 0, RECV_BUFFER_SIZE);    // Set the receive buffer to full zero
 
-                int recvStatus = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recv, &recvLen);
+                int recvStatus = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recvAddr, &recvLen);
 
-                if(strcmp(inet_ntoa(recv.sin_addr), destIP.c_str()) == 0){
+                if(!strcmp(inet_ntoa(recvAddr.sin_addr), destIP.c_str())){
                     resps++;
                     break;
                 }
@@ -351,10 +383,10 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
 
             // Set debug log after timer to avoid extra delay
             if (debug)
-                errOut << '\t' << "Send info: " << "status: " << sendStatus 
+                errOut << "  Send info: " << "status: " << sendStatus 
                        << " Error code: " << sendErrorCode
                        << endl
-                       << '\t' << "Receive info: " << "status: " << recvStatus 
+                       << "  Receive info: " << "status: " << recvStatus 
                        << " Error code: " << WSAGetLastError()
                        << endl;
 
@@ -378,9 +410,9 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
                 // result->seq = seqStart;
                 // result->len = ntohs(*ipMsgLen);
                 // result->ttl = recvTTL;
-                int checksum = ntohs(pIcmpResp->checkSum);
+                int checksum = ntohs(pIcmpResp->CheckSum);
 
-                stdOut << ntohs(*ipMsgLen) << " bytes from " << destIP << ':'
+                stdOut << *ipMsgLen << " bytes from " << destIP << ':'
                     << " ICMP_sequence=" << pIcmpReqHdr->seq
                     << " TTL=" << int(recvTTL)
                     << " Time=" <<fixed << setprecision(3) << durTime << " ms";
@@ -408,7 +440,7 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
 }
 
 // Calculate the checksum from ICMP header data
-unsigned short checkSum(icmpHeader* head, int len){
+unsigned short CheckSum(icmpHeader* head, int len){
     unsigned short *temp = (unsigned short *)head;
     unsigned int sum = 0x0;
 

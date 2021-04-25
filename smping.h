@@ -7,19 +7,29 @@ using namespace std;
 
 struct ParaResolveFailedException : public exception{
     const char * what () const throw (){
-        return "Parameters parse error.";
+        return "\nParameters parse error.";
     }
 };
 
 struct WinsockRecvTimeOutException : public exception{
     const char * what () const throw (){
-        return "Timeout......";
+        return "\nTimeout......";
     }
 };
 
-struct WinsockBindFailedException : public exception{
-    string result = "Bind address failed.Error code:";
+/* struct WinsockBindFailedException : public exception{
+    string result = "\nBind address failed.Error code:";
     WinsockBindFailedException(int errCode){
+        result.append(to_string(errCode));
+    }
+    const char * what () const throw (){
+        return result.c_str();
+    }
+}; */
+
+struct WinDnsApiQueryFailedException : public exception{
+    string result = "\nDNS query failed.Error code:";
+    WinDnsApiQueryFailedException(int errCode){
         result.append(to_string(errCode));
     }
     const char * what () const throw (){
@@ -28,7 +38,7 @@ struct WinsockBindFailedException : public exception{
 };
 
 struct WinsockSendException : public exception{
-    string result = "An error occurred while send data. Code:";
+    string result = "\nAn error occurred while send data. Code:";
     WinsockSendException(int errCode){
         result.append(to_string(errCode));
     }
@@ -39,13 +49,13 @@ struct WinsockSendException : public exception{
 
 struct IcmpRecvFailedException : public exception{
     const char * what () const throw (){
-        return "IP version check failed.";
+        return "\nIP version check failed.";
     }
 };
 
 struct GetNetworkParamsFailedException : public exception{
     int errCode;
-    string result = string("Get network parameters failed.");
+    string result = "\nGet network parameters failed.";
     GetNetworkParamsFailedException();
     GetNetworkParamsFailedException(int errCode, int retVal = -1){
         switch (errCode){
@@ -102,7 +112,7 @@ struct dnsAnsMsg{
 struct icmpHeader{
     unsigned char type; 
     unsigned char code;
-    unsigned short checkSum;
+    unsigned short CheckSum;
     unsigned short id;
     unsigned short seq;
 };
@@ -122,9 +132,9 @@ struct DNSList{
 
 parseResult* checkArgs(int argc, char* argv[]);
 inline const char* bool2Char(bool input);
-DNSList* getDNSList(bool debug, ostream& errOut);
-char* nslookup(string& hostname, bool debug, ostream& errOut);
-char* nslookupFull(string& hostname, bool debug, ostream& errOut);
-unsigned short checkSum(icmpHeader* head, int len);
+DNSList* GetDNSList(bool debug, ostream& errOut);
+char* NsLookup(string& hostname, bool debug, ostream& errOut);
+const char* NsLookupFull(string& hostname, bool debug, ostream& errOut);
+unsigned short CheckSum(icmpHeader* head, int len);
 // unsigned short chsum(icmpHeader *picmp, int len);
-pingInfo* ping(string& destIP, bool loop, int count, int size, int seqStart, bool debug, ostream& stdOut, ostream& errOut);
+pingInfo* Ping(string& destIP, bool loop, int count, int size, int seqStart, bool debug, ostream& stdOut, ostream& errOut);

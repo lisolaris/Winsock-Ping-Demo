@@ -37,7 +37,7 @@ using namespace std;
 
 int main(){
     icmpHeader* test = new icmpHeader;
-    test->checkSum = 0;
+    test->CheckSum = 0;
     test->code = 0;
     test->type = 0x08;
     test->seq = 1;
@@ -159,14 +159,14 @@ USHORT checksum(USHORT *buffer, int size)
 }
 
 
-// Send DNS query message to get target IP, will be called if nslookup() failed
-char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
+// Send DNS query message to get target IP, will be called if NsLookup() failed
+char* NsLookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
     if (debug)
-        errOut << endl << "nslookupFull() called" << endl;
+        errOut << endl << "NsLookupFull() called" << endl;
 
     char* ip = NULL;
     try{
-        DNSList* pDnsList = getDNSList(debug, errOut);
+        DNSList* pDnsList = GetDNSList(debug, errOut);
 
         const char* hostName = hostname.c_str();
         int targetLen = sizeof(hostName) + 1;
@@ -309,7 +309,7 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
             } */
 
 /*         for (int i=0; i<parseRes->count; i++){
-            pingRes = ping(parseRes->ip, parseRes->loop, parseRes->size, i+1, parseRes->debug, cerr);
+            pingRes = Ping(parseRes->ip, parseRes->loop, parseRes->size, i+1, parseRes->debug, cerr);
             cout << pingRes->len << " bytes from " << parseRes->ip << ':'
                  << " ICMP_sequence=" << pingRes->seq
                  << " TTL=" << pingRes->ttl
