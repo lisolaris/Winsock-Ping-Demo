@@ -1,5 +1,6 @@
 #include <exception>
 #include <vector>
+#include <cstdlib>
 #include <iostream>
 
 using namespace std;
@@ -16,13 +17,23 @@ struct WinsockRecvTimeOutException : public exception{
     }
 };
 
-struct WinsockSendException : public exception{
-    int errCode;
-    WinsockSendException(int errCode){
-        errCode = errCode;
-    };
+struct WinsockBindFailedException : public exception{
+    string result = "Bind address failed.Error code:";
+    WinsockBindFailedException(int errCode){
+        result.append(to_string(errCode));
+    }
     const char * what () const throw (){
-        return "An error occurred while send data. Code:";
+        return result.c_str();
+    }
+};
+
+struct WinsockSendException : public exception{
+    string result = "An error occurred while send data. Code:";
+    WinsockSendException(int errCode){
+        result.append(to_string(errCode));
+    }
+    const char * what () const throw (){
+        return result.c_str();
     }
 };
 
@@ -43,7 +54,8 @@ struct GetNetworkParamsFailedException : public exception{
                 break;
             case 2:
                 result.append("GetNetworkParams() returned a error.Error code:");
-                result.append(1, char(retVal - 48));
+                result.append(to_string(retVal));
+                break;
         }
     }
     const char * what () const throw (){
@@ -74,6 +86,17 @@ struct dnsMessage{
     unsigned short ansRR;
     unsigned short authRR;
     unsigned short adlRR;    // Additional RR
+};
+
+struct dnsAnsMsg{
+    // Skip the head 2 bytes: 1100 0000 0000 1100
+    // I don't know why it exists but that's 
+    unsigned short head;
+    unsigned short type;
+    unsigned short dnsClass;
+    unsigned int TTL;
+    unsigned short len;
+    char ip[4];
 };
 
 struct icmpHeader{

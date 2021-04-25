@@ -27,8 +27,9 @@
 #include "smping.h"
 
 #include <winsock2.h>    //  Complier force winsock2.h set before winsock.h
-#include <winsock.h>
+// #include <winsock.h>
 #include <ws2tcpip.h>
+#include <windns.h>
 #include <iphlpapi.h>
 #include <windows.h>    // Complier recommand to put windows.h after winsock2.h
 
@@ -40,6 +41,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <iomanip>
 #include <string>
 
@@ -58,6 +60,7 @@ const int IcmpHeaderSize = sizeof(icmpHeader);
 #define DNS_QUERY_INFO_SIZE DnsQueryInfoSize
 #define ICMP_HEADER_SIZE IcmpHeaderSize
 #define RECV_BUFFER_SIZE 1024
+#define LOCAL_PORT 56789
 
 using namespace std;
 
@@ -182,8 +185,57 @@ parseResult* checkArgs(int argc, char* argv[]){
     return res;
 }
 
+// resolve the input hostname to IP address, use gethostbyname() in Winsock library
+char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
+    if (debug)
+        errOut << endl << "nslookup() called" << endl;
+
+    // If use string to declare ip then return it's reference, the Program will exit unexpectly
+    char* ip = NULL;
+    try{
+        WSADATA wsaData;
+        WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+        hostent* host = gethostbyname(hostname.c_str());
+
+        if (host == NULL){
+            if (debug){
+                errOut << "Winsock gethostbyname() failed.";
+                int dwError = WSAGetLastError();
+                if (dwError != 0) {
+                    switch (dwError){
+                        case WSAHOST_NOT_FOUND:
+                            errOut << "Host not found." << endl;
+                            break;
+                        case WSANO_DATA:
+                            errOut << "No data record found." << endl;
+                            break;
+                        default:
+                            errOut << "Error code:" << dwError << endl;
+                            break;
+                    }
+                }
+                errOut << "Try nslookupFull() to get target IP." << endl;
+            }
+            ip = nslookupFull(hostname, debug, errOut);
+        }
+        else
+            ip = inet_ntoa(*(in_addr*)host->h_addr);
+
+        if (debug)
+            errOut << endl << "IP resolved: " << ip << endl << endl;
+    }
+    catch (exception& e){
+    }
+    return ip;
+}
+
+char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
+    char* ip;
+}
+
 // Get current DNS configurations, using GetNetworkParams()
-DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
+/* DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
     if (debug)
         errOut << endl << "getDNSList() called" << endl;
     try{
@@ -233,122 +285,120 @@ DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
     }
     catch (exception& e){}
     return NULL;
-}
-
-// resolve the input hostname to IP address, use gethostbyname() in Winsock library
-char* nslookup(string& hostname, bool debug = false, ostream& errOut = cerr){
-    if (debug)
-        errOut << endl << "nslookup() called" << endl;
-
-    // If use string to declare ip then return it's reference, the Program will exit unexpectly
-    char* ip;
-    try{
-        WSADATA wsaData;
-        WSAStartup(MAKEWORD(2, 2), &wsaData);
-
-        hostent* host = gethostbyname(hostname.c_str());
-
-        if (host == NULL){
-            if (debug){
-                errOut << "Winsock gethostbyname() failed.";
-                int dwError = WSAGetLastError();
-                if (dwError != 0) {
-                    switch (dwError){
-                        case WSAHOST_NOT_FOUND:
-                            errOut << "Host not found." << endl;
-                            break;
-                        case WSANO_DATA:
-                            errOut << "No data record found." << endl;
-                            break;
-                        default:
-                            errOut << "Error code:" << dwError << endl;
-                            break;
-                    }
-                }
-                errOut << "Try nslookupFull() to get target IP." << endl;
-            }
-            ip = nslookupFull(hostname, debug, errOut);
-        }
-        else
-            ip = inet_ntoa(*(in_addr*)host->h_addr);
-
-        if (debug)
-            errOut << endl << "IP resolved: " << ip << endl << endl;
-    }
-    catch (exception& e){
-    }
-    return ip;
-}
+} */
 
 // Send DNS query message to get target IP, will be called if nslookup() failed
-char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
-
+/* char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
     if (debug)
         errOut << endl << "nslookupFull() called" << endl;
 
-    DNSList* pDnsList = getDNSList(debug, errOut);
+    char* ip = NULL;
+    try{
+        DNSList* pDnsList = getDNSList(debug, errOut);
 
-    const char* hostName = hostname.c_str();
-    int targetLen = sizeof(hostName) + 1;
-    char* targetName = (char*)malloc(targetLen);
-    memcpy(targetName+sizeof(char), hostName, targetLen-1);
+        const char* hostName = hostname.c_str();
+        int targetLen = sizeof(hostName) + 1;
+        char* targetName = (char*)malloc(targetLen);
+        memcpy(targetName+sizeof(char), hostName, targetLen-1);
 
-    // Organize domin name in DNS message format
-    for(int i=targetLen-1; i>=0; i--){
-        int len = 0;
-        targetName[targetLen] = 0;
+        // Organize domin name in DNS message format
+        for(int i=targetLen-1; i>=0; i--){
+            int len = 0;
+            targetName[targetLen] = 0;
 
-        if (targetName[i] != '.')
-            len++;
-        else{
-            targetName[i] = len;
-            len = 0;
+            if (targetName[i] != '.')
+                len++;
+            else{
+                targetName[i] = len;
+                len = 0;
+            }
         }
+
+        WSADATA wsaData;
+        WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+        SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+        bool flag = false;
+
+        for(int i=1; flag; i++){
+            sockaddr_in sendSockAddr;
+            sendSockAddr.sin_family = AF_INET;
+            sendSockAddr.sin_addr.S_un.S_addr = inet_addr(pDnsList->ip);
+            sendSockAddr.sin_port = htons(53);
+
+            int sizeOfSendBuffer = DNS_MESSAGE_SIZE + targetLen + DNS_QUERY_INFO_SIZE;
+            char sendBuff[sizeOfSendBuffer];
+
+            dnsMessage* pDnsQueryMsg = (dnsMessage*)sendBuff;
+            pDnsQueryMsg->id = i;
+            pDnsQueryMsg->flag = 0x0100;    //Standard query
+            pDnsQueryMsg->questions = 1;
+            pDnsQueryMsg->ansRR = 0;
+            pDnsQueryMsg->authRR = 0;
+            pDnsQueryMsg->adlRR = 0;
+
+            // Target name in DNS message format, after basic sturct part
+            memcpy(sendBuff+DNS_MESSAGE_SIZE, targetName, targetLen);
+
+            dnsQueryInfo* pDnsQueryInfo = (dnsQueryInfo*)(sendBuff + DNS_MESSAGE_SIZE + targetLen);
+            pDnsQueryInfo->type = 0x0001;    //Type: A(Host Address)
+            pDnsQueryInfo->dnsClass = 0x0001;    //Class: IN
+
+            sockaddr_in recvSockAddr;
+            // recvSockAddr.sin_addr.S_un.S_addr = inet_addr(pDnsList->ip);
+            // recvSockAddr.sin_family = AF_INET;
+
+            int sizeOfRecvSockAddr = sizeof(recvSockAddr);
+            char recvBuff[RECV_BUFFER_SIZE];
+            int sendStatus, recvStatus, sendErrorCode;
+
+            sendStatus = sendto(sock, sendBuff, sizeOfSendBuffer, 0, (SOCKADDR*)pDnsList->ip, sizeOfSendBuffer);
+            sendErrorCode = WSAGetLastError();
+            bool isTimeOut = false;
+            char recvBuff[RECV_BUFFER_SIZE];
+
+            while(true){
+                if(i++ > 5){    // Try 5 times to receive reply message but timeout
+                    isTimeOut = true;
+                    break;
+                }
+
+                memset(recvBuff, 0, RECV_BUFFER_SIZE);
+
+                recvStatus = recvfrom(sock, recvBuff, MAXBYTE, 0, (SOCKADDR*)&recvSockAddr, &sizeOfRecvSockAddr);
+
+                if (!strcmp(inet_ntoa(recvSockAddr.sin_addr), pDnsList->ip))
+                    if ((char)(recvBuff+9) == 0x11)    // IP header + 9 bytes: Protocol, 0x11: UDP
+                    break;
+            }
+
+            if(isTimeOut)
+                throw WinsockRecvTimeOutException();
+
+            char ipInfo = recvBuff[0];
+            short* ipMsgLen = (short*)&(recvBuff[2]);
+            int ipVer = ipInfo >> 4;
+            int ipHeadLen = ((ipInfo << 4) >> 4) * 4;
+
+            char* pUdpHdr = (char*)(recvBuff + ipHeadLen);
+
+            if (*(short*)pUdpHdr == ntohs(53)){    // First 2 bytes of UDP Header is port number
+                int udpHdrLen = *(short*)(pUdpHdr + 4);
+                dnsMessage* pDnsResp = (dnsMessage*)(pUdpHdr + udpHdrLen);
+                dnsAnsMsg* pDnsAnsersMsg = (dnsAnsMsg*)(pUdpHdr + DNS_MESSAGE_SIZE + targetLen + DNS_QUERY_INFO_SIZE);
+
+                pDnsAnsersMsg->
+            }
+        }
+        closesocket(sock);
     }
-
-    WSADATA wsaData;
-    WSAStartup(MAKEWORD(2, 2), &wsaData);
-
-    SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    // setsockopt(sock, )
-    bool flag = false;
-
-    for(int i=1; flag; i++){
-        sockaddr_in dest;
-        dest.sin_family = AF_INET;
-        dest.sin_addr.S_un.S_addr = inet_addr(pDnsList->ip);
-        dest.sin_port = htons(53);
-
-        int sizeOfSendBuffer = DNS_MESSAGE_SIZE + targetLen + DNS_QUERY_INFO_SIZE;
-        char sendBuff[sizeOfSendBuffer];
-
-        dnsMessage* pDnsQueryMsg = (dnsMessage*)sendBuff;
-        pDnsQueryMsg->id = i;
-        pDnsQueryMsg->flag = 0x0100;    //Standard query
-        pDnsQueryMsg->questions = 1;
-        pDnsQueryMsg->ansRR = 0;
-        pDnsQueryMsg->authRR = 0;
-        pDnsQueryMsg->adlRR = 0;
-
-        // Target name in DNS message format, after basic sturct part
-        memcpy(sendBuff+DNS_MESSAGE_SIZE, targetName, targetLen);
-
-        dnsQueryInfo* pDnsQueryInfo = (dnsQueryInfo*)(sendBuff + DNS_MESSAGE_SIZE + targetLen);
-        pDnsQueryInfo->type = 0x0001;    //Type: A(Host Address)
-        pDnsQueryInfo->dnsClass = 0x0001;    //Class: IN
-
-        sockaddr_in recv;
-        int sizeOfRecvSock = sizeof(recv);
-        char recvBuff[RECV_BUFFER_SIZE];
-        int sendStatus, recvStatus, sendErrorCode;
-
-        sendStatus = sendto(sock, sendBuff, sizeOfSendBuffer, 0, (SOCKADDR*)pDnsList->ip, sizeOfSendBuffer);
-        sendErrorCode = WSAGetLastError();
-
-
+    catch (exception& e){
+        errOut << e.what();
+        return NULL;
     }
-
-}
+    return ip;
+} */
 
 // Ping destnation IP, default to 32 Byte data pack and repeat for 4 times
 pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, int seqStart = 1, bool debug = false, ostream& stdOut = cout, ostream& errOut = cerr){
@@ -427,9 +477,8 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
                        << " Error code: " << WSAGetLastError()
                        << endl;
 
-            if(isTimeOut){
+            if(isTimeOut)
                 throw WinsockRecvTimeOutException();
-            }
 
             char ipInfo = recvBuff[0];    // First 8 bits for IP version and head length
             short* ipMsgLen = (short*)&(recvBuff[2]);    // 3~4 bytes for total length of IP message
@@ -439,16 +488,16 @@ pingInfo* ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
             int ipHeadLen = ((ipInfo << 4) >> 4) * 4;
 
             // The ICMP Message just after IP head Message, use ipHeadLen to locate it
-            icmpHeader* icmpResp = (icmpHeader*)(recvBuff + ipHeadLen);
+            icmpHeader* pIcmpResp = (icmpHeader*)(recvBuff + ipHeadLen);
 
             // pingInfo* result = new pingInfo;
 
-            if(icmpResp->type == 0){    // ICMP echo reply message
+            if(pIcmpResp->type == 0){    // ICMP echo reply message
                 double durTime = 1000*(double)((endClock-startClock)/double(CLOCKS_PER_SEC));
                 // result->seq = seqStart;
                 // result->len = ntohs(*ipMsgLen);
                 // result->ttl = recvTTL;
-                int checksum = ntohs(icmpResp->checkSum);
+                int checksum = ntohs(pIcmpResp->checkSum);
 
                 stdOut << ntohs(*ipMsgLen) << " bytes from " << destIP << ':'
                     << " ICMP_sequence=" << pIcmpReqHdr->seq
@@ -501,5 +550,5 @@ unsigned short checkSum(icmpHeader* head, int len){
  * https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-setsockopt
  * http://c.biancheng.net/cpp/socket/
  * https://github.com/licongxing/myping/blob/master/main.c
- * 
+ * https://blog.csdn.net/u013183287/article/details/99622725
  */
