@@ -109,11 +109,10 @@ struct icmpHeader{
 
 struct pingInfo{
     // char* destIP;
-    double durTime;
-    int seq;
-    int len;
-    int ttl;
-    unsigned short checksum;
+    int lost;
+    double minRTT;
+    double maxRTT;
+    double avgRTT;
 };
 
 struct DNSList{

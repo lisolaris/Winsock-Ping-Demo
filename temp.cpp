@@ -24,12 +24,10 @@ const int DnsMsgSize = sizeof(dnsMessage);
 const int DnsQueryInfoSize = sizeof(dnsQueryInfo);
 const int IcmpHeaderSize = sizeof(icmpHeader);
 
-// Customed malloc() and free(); See https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getnetworkparams
-#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
-#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 
 #define DNS_MESSAGE_SIZE DnsMsgSize
 #define DNS_QUERY_INFO_SIZE DnsQueryInfoSize
+#define ICMP_HEADER_SIZE IcmpHeaderSize
 #define ICMP_HEADER_SIZE IcmpHeaderSize
 #define RECV_BUFFER_SIZE 1024
 #define LOCAL_PORT 56789
@@ -159,58 +157,7 @@ USHORT checksum(USHORT *buffer, int size)
     cksum += (cksum >>16);
     return (USHORT)(~cksum);
 }
-// Get current DNS configurations, using GetNetworkParams()
-DNSList* getDNSList(bool debug = false, ostream& errOut = cerr){
-    if (debug)
-        errOut << endl << "getDNSList() called" << endl;
-    try{
-        FIXED_INFO *pFixedInfo;
-        ULONG ulOutBufLen;
-        DWORD dwRetVal;
-        IP_ADDR_STRING *pIPAddr;
 
-        pFixedInfo = (FIXED_INFO *)MALLOC(sizeof(FIXED_INFO));
-        ulOutBufLen = sizeof(FIXED_INFO);
-
-        // Call GetAdaptersInfo() once to get the correct value of ulOutBufLen
-        if (GetNetworkParams(pFixedInfo, &ulOutBufLen) == ERROR_BUFFER_OVERFLOW) {
-            FREE(pFixedInfo);
-            pFixedInfo = (FIXED_INFO *) MALLOC(ulOutBufLen);
-            if (pFixedInfo == NULL) 
-                // The meaning of errcode can see in smping.h
-                throw GetNetworkParamsFailedException(1);
-        }
-
-        dwRetVal = GetNetworkParams(pFixedInfo, &ulOutBufLen);
-        if (dwRetVal == NO_ERROR){
-            pIPAddr = &(pFixedInfo->DnsServerList);
-
-            DNSList* head = new DNSList;
-            head->ip = pIPAddr->IpAddress.String;
-
-            if (debug)
-                errOut << endl << "GetNetworkParams() successed." << endl
-                       << "DNS Server obtained:" << endl;
-
-            DNSList* temp = head;
-            while(pIPAddr != NULL){
-                if (debug)
-                    errOut << '\t' << pIPAddr->IpAddress.String << endl;
-                temp->next = new DNSList;
-                temp = temp->next;
-                // Allocate a piece of memory for DNSList to avoid bug when return it
-                temp->ip = (char*)malloc(sizeof(pIPAddr->IpAddress.String));
-                memcpy(temp->ip, pIPAddr->IpAddress.String, sizeof(pIPAddr->IpAddress.String));
-                pIPAddr = pIPAddr->Next;
-            }
-
-            return head;
-        }else
-            throw GetNetworkParamsFailedException(2, dwRetVal);
-    }
-    catch (exception& e){}
-    return NULL;
-}
 
 // Send DNS query message to get target IP, will be called if nslookup() failed
 char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
@@ -360,3 +307,26 @@ char* nslookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
                         throw ParaResolveFailedException();
                 }
             } */
+
+/*         for (int i=0; i<parseRes->count; i++){
+            pingRes = ping(parseRes->ip, parseRes->loop, parseRes->size, i+1, parseRes->debug, cerr);
+            cout << pingRes->len << " bytes from " << parseRes->ip << ':'
+                 << " ICMP_sequence=" << pingRes->seq
+                 << " TTL=" << pingRes->ttl
+                 << " Time=" <<fixed << setprecision(3) << pingRes->durTime << " ms";
+            if (parseRes->debug)
+                cerr << " CheckSum=" << pingRes->checksum << endl;
+            else
+                cout << endl;
+
+            Sleep(500);
+        } */
+
+struct pingInfo{
+    // char* destIP;
+    double durTime;
+    int seq;
+    int len;
+    int ttl;
+    unsigned short checksum;
+};
