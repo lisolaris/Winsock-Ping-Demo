@@ -137,6 +137,12 @@ ParseResult* checkArgs(int argc, char* argv[]){
                             throw ParaResolveFailedException();
                 }
 
+                else if (current[1] == '4')
+                    continue;    // Do nothing
+
+                else
+                    throw ParaResolveFailedException();
+
         }
     }
     // Count the '.' appeared in target, to check whether IP address or hostname
@@ -150,8 +156,12 @@ ParseResult* checkArgs(int argc, char* argv[]){
                 pRes->isIPAddr = false;
         }
     }
-    if (dotCount != 3 && pRes->isIPAddr == true) throw ParaResolveFailedException();
-    if (pRes->count == 0 && pRes->loop == false) pRes->count = 4;
+    if (dotCount != 3 && pRes->isIPAddr == true) 
+        throw ParaResolveFailedException();
+
+    // If not specified -t and -l, set the loop count to 4
+    if (pRes->count == 0 && pRes->loop == false) 
+        pRes->count = 4;
     return pRes;
 }
 
@@ -394,13 +404,9 @@ PingInfo* Ping(string& destIP, bool loop = false, int count = 4, int size = 32, 
             // The ICMP Message just after IP head Message, use ipHeadLen to locate it
             IcmpHeader* pIcmpResp = (IcmpHeader*)(recvBuff + ipHeadLen);
 
-            // PingInfo* result = new PingInfo;
-
             if(pIcmpResp->type == 0){    // ICMP echo reply message
                 double durTime = (endClock.QuadPart - startClock.QuadPart) / quadpart;
-                // result->seq = seqStart;
-                // result->len = ntohs(*ipMsgLen);
-                // result->ttl = recvTTL;
+
                 int checksum = ntohs(pIcmpResp->CheckSum);
 
                 stdOut << *ipMsgLen << " bytes from " << destIP << ':'

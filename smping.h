@@ -109,5 +109,4 @@ DNSList* GetDNSList(bool debug, ostream& errOut);
 char* NsLookup(string& hostname, bool debug, ostream& errOut);
 const char* NsLookupFull(string& hostname, bool debug, ostream& errOut);
 unsigned short CheckSum(IcmpHeader* head, int len);
-// unsigned short chsum(IcmpHeader *picmp, int len);
 PingInfo* Ping(string& destIP, bool loop, int count, int size, int seqStart, bool debug, ostream& stdOut, ostream& errOut);
