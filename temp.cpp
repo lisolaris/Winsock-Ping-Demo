@@ -20,9 +20,34 @@
 #include <iomanip>
 #include <string>
 
+struct dnsMessage{
+    unsigned short id;
+    unsigned short flag;
+    unsigned short questions;
+    unsigned short ansRR;
+    unsigned short authRR;
+    unsigned short adlRR;    // Additional RR
+};
+
+struct dnsQueryInfo{
+    unsigned short type;
+    unsigned short dnsClass;
+};
+
+
+struct dnsAnsMsg{
+    // Skip the head 2 bytes: 1100 0000 0000 1100
+    // I don't know why it exists but that's 
+    unsigned short head;
+    unsigned short type;
+    unsigned short dnsClass;
+    unsigned int TTL;
+    unsigned short len;
+    char ip[4];
+};
+
 const int DnsMsgSize = sizeof(dnsMessage);
 const int DnsQueryInfoSize = sizeof(dnsQueryInfo);
-const int IcmpHeaderSize = sizeof(icmpHeader);
 
 
 #define DNS_MESSAGE_SIZE DnsMsgSize
@@ -36,14 +61,14 @@ const int IcmpHeaderSize = sizeof(icmpHeader);
 using namespace std;
 
 int main(){
-    icmpHeader* test = new icmpHeader;
+    IcmpHeader* test = new IcmpHeader;
     test->CheckSum = 0;
     test->code = 0;
     test->type = 0x08;
     test->seq = 1;
 }
 
-short checkSum2(icmpHeader* head, int len){
+short checkSum2(IcmpHeader* head, int len){
     unsigned short *temp = (unsigned short *)head;
     int sum = 0;
 
@@ -63,8 +88,8 @@ short checkSum2(icmpHeader* head, int len){
     return (sum & 0xffff);
 }
 
-parseResult* checkArgs(int argc, char* argv[]){
-    parseResult* res = new parseResult;
+ParseResult* checkArgs(int argc, char* argv[]){
+    ParseResult* res = new ParseResult;
 
     // assign the hostname/ip to res->target
     if (argc == 1)
@@ -119,7 +144,7 @@ parseResult* checkArgs(int argc, char* argv[]){
 }
 
 
-unsigned short chsum(icmpHeader *picmp, int len) {
+unsigned short chsum(IcmpHeader *picmp, int len) {
     long sum = 0;
     unsigned short *temp = (unsigned short *)picmp;
 
@@ -160,7 +185,7 @@ USHORT checksum(USHORT *buffer, int size)
 
 
 // Send DNS query message to get target IP, will be called if NsLookup() failed
-char* NsLookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
+const char* NsLookupFull(string& hostname, bool debug = false, ostream& errOut = cerr){
     if (debug)
         errOut << endl << "NsLookupFull() called" << endl;
 
@@ -322,7 +347,7 @@ char* NsLookupFull(string& hostname, bool debug = false, ostream& errOut = cerr)
             Sleep(500);
         } */
 
-struct pingInfo{
+struct PingInfo{
     // char* destIP;
     double durTime;
     int seq;
