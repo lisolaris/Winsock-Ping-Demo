@@ -1,4 +1,4 @@
-//这个文件用来存一些我不舍得扔掉的代码
+ //这个文件用来存一些我不舍得扔掉的代码
 #include "smping.h"
 
 #include <winsock2.h>    //  Complier force winsock2.h set before winsock.h
@@ -62,7 +62,7 @@ using namespace std;
 
 int main(){
     IcmpHeader* test = new IcmpHeader;
-    test->CheckSum = 0;
+    test->cksum = 0;
     test->code = 0;
     test->type = 0x08;
     test->seq = 1;
@@ -347,7 +347,7 @@ const char* NsLookupFull(string& hostname, bool debug = false, ostream& errOut =
             Sleep(500);
         } */
 
-struct PingInfo{
+struct PingResult{
     // char* destIP;
     double durTime;
     int seq;

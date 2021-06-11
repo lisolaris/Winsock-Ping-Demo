@@ -2,6 +2,11 @@
 #include <vector>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 
 using namespace std;
 
@@ -90,17 +95,9 @@ struct ParseResult{
 struct IcmpHeader{
     unsigned char type; 
     unsigned char code;
-    unsigned short CheckSum;
+    unsigned short cksum;
     unsigned short id;
     unsigned short seq;
-};
-
-struct PingInfo{
-    // char* destIP;
-    int lost = 0;
-    double minRTT = 16777216;
-    double maxRTT = 0;
-    double sumTime = 0;
 };
 
 ParseResult* checkArgs(int argc, char* argv[]);
@@ -109,4 +106,5 @@ DNSList* GetDNSList(bool debug, ostream& errOut);
 char* NsLookup(string& hostname, bool debug, ostream& errOut);
 const char* NsLookupFull(string& hostname, bool debug, ostream& errOut);
 unsigned short CheckSum(IcmpHeader* head, int len);
-PingInfo* Ping(string& destIP, bool loop, int count, int size, int seqStart, bool debug, ostream& stdOut, ostream& errOut);
+double Ping(SOCKET& sock, string& destIP, int size, int sequence, int pid, bool debug, ostream& stdOut, ostream& errOut);
+inline void setResult(double currRTT, double* minRTT, double* maxRTT, double* totalTime);
