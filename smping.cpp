@@ -33,19 +33,18 @@ int main(int argc, char* argv[]){
     try{
         ParseResult* pParseRes = checkArgs(argc, argv);
 
-        if (pParseRes->debug){
-            cerr << "argc: " << argc << endl;
-            for(int i=0; i<argc; i++)
-                cerr << "argv[" << i << "] " << argv[i] << endl;
-
         if (pParseRes->loop)
             pParseRes->count = -1;
 
         if (pParseRes->isIPAddr)
             pParseRes->ip = pParseRes->target;
+
+        if (pParseRes->debug){
+            cerr << "argc: " << argc << endl;
+            for(int i=0; i<argc; i++)
+                cerr << "argv[" << i << "] " << argv[i] << endl;
         // else
         //     pParseRes->ip = string(NsLookup(pParseRes->target, pParseRes->debug, cerr));
-
             cerr << endl;
             cerr << "Parameters resolve result:" << endl
                  << "  target.isIPAddr = " << bool2Char(pParseRes->isIPAddr) << endl
@@ -98,7 +97,7 @@ int main(int argc, char* argv[]){
         cout << endl;
         cout << "-- " << pParseRes->ip << " ping statistics --" << endl
              << pParseRes->count << " packets transmitted, " 
-             << count - lost << " received, "
+             << (count - 1) - lost << " received, "
              << fixed << setprecision(2)
              << (float)(lost/count) << "% packet loss, "
             //  << "time " << pPingRes->sumTime ""
@@ -273,8 +272,8 @@ double Ping(SOCKET& sock, string& destIP, int size, int sequence, int pid,  bool
                     << " Error code: " << recvErrorCode
                     << endl;
 
-        // if(isTimeOut)
-        //     throw WinsockRecvTimeOutException();
+        if(isTimeOut)
+            throw WinsockRecvTimeOutException();
 
         char ipInfo = recvBuff[0];    // First 8 bits for IP version and head length
         unsigned short ipMsgLen = ntohs(*((unsigned short*)&recvBuff[2]));    // 3~4 bytes for total length of IP message
@@ -283,7 +282,7 @@ double Ping(SOCKET& sock, string& destIP, int size, int sequence, int pid,  bool
         int ipVer = ipInfo >> 4;
         unsigned char ipHeadLen = ((unsigned char)(ipInfo << 4) >> 4) * 4;
 
-        // The ICMP Message just after IP head Message, use ipHeadLen to locate it
+        // The ICMP  Message just after IP head Message, use ipHeadLen to locate it
         IcmpHeader* pIcmpResp = (IcmpHeader*)(recvBuff + ipHeadLen);
 
         // cerr << "pIcmpResp->type: " << (int)(pIcmpResp->type) << endl;

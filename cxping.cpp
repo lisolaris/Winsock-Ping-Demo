@@ -42,11 +42,6 @@ int main(int argc, char* argv[]){
     try{
         ParseResult* pParseRes = checkArgs(argc, argv);
 
-        if (pParseRes->debug){
-            cerr << "argc: " << argc << endl;
-            for(int i=0; i<argc; i++)
-                cerr << "argv[" << i << "] " << argv[i] << endl;
-
         if (pParseRes->loop)
             pParseRes->count = -1;
 
@@ -54,6 +49,12 @@ int main(int argc, char* argv[]){
             pParseRes->ip = pParseRes->target;
         else
             pParseRes->ip = string(NsLookup(pParseRes->target, pParseRes->debug, cerr));
+
+        if (pParseRes->debug){
+            cerr << "argc: " << argc << endl;
+            for(int i=0; i<argc; i++)
+                cerr << "argv[" << i << "] " << argv[i] << endl;
+
 
             cerr << endl;
             cerr << "Parameters resolve result:" << endl
